@@ -1,0 +1,86 @@
+---
+title: "Hw6"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(viridis)
+library(modelr)
+library(mgcv)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+
+##Problem 1
+
+```{r}
+bwt_df <- read_csv("birthweight.csv", col_types = "fnnnnnfnfnnnfnnnnnnn")
+summary(bwt_df)
+sum(is.na(bwt_df))
+```
+
+The smoke_fit model attempts to use babysex mrace and frace as citnroling factors to determine relationship between smoked and bwt. 
+```{r}
+smoke_fit <- lm(bwt ~ babysex + mrace + frace + smoken, data = bwt_df)
+broom::glance(smoke_fit)
+broom::tidy(smoke_fit)
+
+
+bwt_df %>% 
+  add_predictions(smoke_fit) %>% 
+  add_residuals(smoke_fit) %>% 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red")
+```
+Comparing models,
+```{r}
+length_fit <- lm(bwt ~ blength + gaweeks, data = bwt_df)
+head_fit <- lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex +bhead*blength*babysex, data = bwt_df)
+
+cv_df <- 
+  crossv_mc(bwt_df, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)) %>% 
+  mutate(
+  smoke_fit  = map(train, ~lm(bwt ~ babysex + mrace + frace + smoken, data = .x)),
+    length_fit = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+    head_fit  = map(train, ~lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex +bhead*blength*babysex, data = .x))) %>% 
+  mutate(
+    rmse_smoke = map2_dbl(smoke_fit, test, ~rmse(model = .x, data = .y)),
+    rmse_length= map2_dbl(length_fit, test, ~rmse(model = .x, data = .y)),
+    rmse_head = map2_dbl(head_fit, test, ~rmse(model = .x, data = .y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+The model using head circumference, length, sex, and all interactions (including the three-way interaction) between these predictors has the lowest rmse, and would be the most appropriate model. 
+
+
+
+##Problem 2
