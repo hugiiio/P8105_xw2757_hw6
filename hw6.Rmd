@@ -84,3 +84,77 @@ The model using head circumference, length, sex, and all interactions (including
 
 
 ##Problem 2
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+Bootstrap
+```{r}
+
+weather_boot <- 
+weather_df %>% 
+  bootstrap(5000) %>% 
+  mutate(
+    models = map(.x = strap, ~lm(tmax~tmin, data = .x)),
+    results = map(.x = models, broom::tidy),
+    r_square = map(.x = models, broom::glance)
+  ) %>% 
+  select(strap, results, r_square) %>% 
+  unnest(results, r_square) %>% 
+  select(strap, term, estimate, r.squared) %>% 
+  pivot_wider(
+   names_from = term,
+   values_from = estimate
+  ) %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    log_est = log(intercept*tmin)
+  ) %>% 
+  select(-intercept, -tmin)
+```
+
+Distributions
+```{r}
+r_sq_plot <- 
+  weather_boot %>% 
+  ggplot(aes(x = r_squared)) +
+  geom_density()
+
+r_sq_plot
+
+
+log_est_plot <- 
+  weather_boot %>% 
+  ggplot(aes(x = log_est)) +
+  geom_density()
+
+log_est_plot
+
+```
+
+95%CI
+
+```{r}
+weather_boot %>% 
+  pivot_longer(
+    cols = c(r_squared,log_est),
+    names_to = "measures", 
+    values_to = "value"
+  ) %>% 
+  group_by(measures) %>% 
+  summarize(
+    ci_lower = quantile(value, 0.025),
+    ci_upper = quantile(value, 0.975)) %>% 
+  knitr::kable()
+```
+
+
